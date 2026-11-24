@@ -1,6 +1,6 @@
 [workspace]
-roots = ["~/CodAg/workspace"]
-read_roots = ["~/Documents", "~/Downloads", "~/CodAg", "/Volumes"]
+roots = ["~/CodAg/workspace", "~/Documents", "~/Desktop", "~/Downloads", "/Volumes"]
+read_roots = ["~", "/Volumes"]
 
 [limits]
 max_files_per_action = 5
