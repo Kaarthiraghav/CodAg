@@ -147,7 +147,7 @@ def chat(
         proj_info = f" | Project: {sess.project_path}" if sess.project_path else ""
         console.print(Panel(
             f"[bold green]CodAg Assistant[/bold green] [cyan][{sess.title}{proj_info}][/cyan]\n"
-            "[dim]Commands: /help, /chats, /switch <name>, /project [path], /profile, /pdf [title], /undo, /clear, /exit[/dim]",
+            "[dim]Commands: /help, /chats, /switch <name>, /project [path], /profile, /skills, /pdf [title], /undo, /clear, /exit[/dim]",
             border_style="green",
         ))
 
@@ -182,6 +182,7 @@ def chat(
                     "  [cyan]/new <title>[/cyan]         Create and switch to a new chat session\n"
                     "  [cyan]/project [path][/cyan]      View or change the active project workspace\n"
                     "  [cyan]/profile[/cyan]             View what CodAg has learned about you\n"
+                    "  [cyan]/skills[/cyan]              List all active built-in and autonomous custom skills\n"
                     "  [cyan]/pdf [title][/cyan]          Export the last response as a PDF and open it in Preview\n"
                     "  [cyan]/undo[/cyan]               Undo the last file modification or restore deleted file\n"
                     "  [cyan]/clear[/cyan]              Clear the terminal screen\n"
@@ -259,6 +260,16 @@ def chat(
                         bullets = "\n".join(f"• {d}" for d in data.get("details", []))
                         table.add_row(aspect.replace("_", " ").title(), bullets or data.get("summary", "-"))
                     console.print(table)
+                continue
+
+            if cmd == "/skills":
+                from codag.skills.custom import list_custom_skills
+                res = list_custom_skills()
+                console.print(Panel(
+                    f"{res.content}\n\n[dim]To create a new skill, simply instruct CodAg in chat (e.g. 'Create a custom skill to parse arXiv papers').[/dim]",
+                    title="Active Custom Skills (~/.codag/skills)",
+                    border_style="magenta",
+                ))
                 continue
 
             if cmd == "/undo":
@@ -470,6 +481,33 @@ def memory_profile(config_dir: str = "config") -> None:
             data.get("updated_at", "-")[:16].replace("T", " "),
         )
     console.print(table)
+
+
+skills_app = typer.Typer(help="Manage autonomous custom skills")
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.command("list")
+def skills_list(config_dir: str = "config") -> None:
+    """List all custom skills installed in ~/.codag/skills/."""
+    from codag.skills.custom import configure_custom_skills, list_custom_skills
+    cfg = load_config(config_dir)
+    configure_custom_skills(cfg.paths.resolved_data_dir / "skills")
+    res = list_custom_skills()
+    console.print(Markdown(res.content))
+
+
+@skills_app.command("delete")
+def skills_delete(skill_name: str = typer.Argument(..., help="Name of the custom skill to remove"), config_dir: str = "config") -> None:
+    """Delete a custom skill by name."""
+    from codag.skills.custom import configure_custom_skills, delete_custom_skill
+    cfg = load_config(config_dir)
+    configure_custom_skills(cfg.paths.resolved_data_dir / "skills")
+    res = delete_custom_skill(skill_name)
+    if res.ok:
+        console.print(f"[green]{res.content}[/green]")
+    else:
+        console.print(f"[red]{res.content}[/red]")
 
 
 chats_app = typer.Typer(help="Manage multi-project chat sessions")

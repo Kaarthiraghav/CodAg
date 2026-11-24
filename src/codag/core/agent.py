@@ -28,6 +28,7 @@ from codag.skills.tasks.tools import configure_tasks
 from codag.skills.web.tools import configure_web
 from codag.skills.knowledge.tools import configure_knowledge
 from codag.skills.code.tools import configure_code
+from codag.skills.custom import configure_custom_skills
 import codag.skills.system.tools
 from codag.skills.scheduler.tools import configure_scheduler
 from codag.core.chats import ChatManager
@@ -81,6 +82,7 @@ class Agent:
             main_model=self.config.models.main,
         )
         configure_scheduler(data_dir / "scheduler.db", data_dir / "tasks.db")
+        configure_custom_skills(data_dir / "skills", registry=self.registry)
         self.chat_manager = ChatManager(data_dir / "chats.db")
 
     def _convert_specs_to_ollama_tools(self, specs: list[ToolSpec]) -> list[dict[str, Any]]:

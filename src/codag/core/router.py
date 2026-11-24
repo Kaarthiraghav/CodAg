@@ -25,9 +25,14 @@ SKILL_DESCRIPTIONS: dict[str, str] = {
     "code": "Plan and build software projects with test-first architecture and git-per-task commits.",
     "system": "Perform macOS actions (notifications, clipboard, open app, quit app, system settings).",
     "scheduler": "Schedule reminders and daily briefings delivered as macOS notifications.",
+    "custom_skills": "Create, list, inspect, and synthesize new custom tools and skills autonomously.",
 }
 
 KEYWORD_PATTERNS: dict[str, list[str]] = {
+    "custom_skills": [
+        "custom skill", "custom skills", "create skill", "learn skill", "new skill",
+        "synthesize tool", "add skill", "list skills", "my skills",
+    ],
     "files": [
         "file", "files", "folder", "folders", "directory", "directories",
         "create file", "read file", "edit file", "delete file", "move file",
@@ -83,6 +88,13 @@ class SkillRouter:
     def __init__(self, llm: LLMClient | None = None, model: str = "qwen3.5:9b") -> None:
         self.llm = llm
         self.model = model
+        self.dynamic_skills: dict[str, list[str]] = {}
+
+    def register_dynamic_skill(self, name: str, description: str, keywords: list[str]) -> None:
+        """Register a dynamic user-created skill into the router."""
+        SKILL_DESCRIPTIONS[name] = description
+        self.dynamic_skills[name] = keywords
+        KEYWORD_PATTERNS[name] = keywords
 
     def route_fast_path(self, text: str) -> str | None:
         """Fast keyword/pattern matching without model invocation."""
