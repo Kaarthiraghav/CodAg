@@ -51,7 +51,11 @@ def execute_build(
 
     resolved_target, in_ws = sandbox.check_write(target_path)
     if not in_ws:
-        raise SandboxError(f"Target directory {plan.target_dir} is outside allowed workspace roots.")
+        # If the target directory was explicitly specified by the user (e.g. ~/Documents), automatically add it to workspace roots
+        sandbox.add_workspace_root(resolved_target)
+        resolved_target, in_ws = sandbox.check_write(target_path)
+        if not in_ws:
+            raise SandboxError(f"Target directory {plan.target_dir} is outside allowed workspace roots.")
 
     resolved_target.mkdir(parents=True, exist_ok=True)
 

@@ -294,19 +294,27 @@ def delete_file(path: str) -> ToolResult:
 
 @tool(
     name="files.allow_directory",
-    tier=RiskTier.READ,
-    description="Grant read access to a specific directory or external storage volume requested by the user.",
+    tier=RiskTier.SAFE_WRITE,
+    description="Explicitly allow access to a local directory or volume for reading, or set write=True to permit building and writing projects in it.",
 )
-def allow_directory(path: str) -> ToolResult:
+def allow_directory(path: str, write: bool = False) -> ToolResult:
     if not _file_tools_instance.sandbox:
         return ToolResult(call_id="", ok=False, content="Environment not configured.")
     try:
-        resolved = _file_tools_instance.sandbox.add_read_root(path)
-        return ToolResult(
-            call_id="",
-            ok=True,
-            content=f"Directory '{resolved}' has been added to allowed read roots.",
-        )
+        if write:
+            resolved = _file_tools_instance.sandbox.add_workspace_root(path)
+            return ToolResult(
+                call_id="",
+                ok=True,
+                content=f"Directory '{resolved}' has been added to allowed workspace roots (read & write permitted).",
+            )
+        else:
+            resolved = _file_tools_instance.sandbox.add_read_root(path)
+            return ToolResult(
+                call_id="",
+                ok=True,
+                content=f"Directory '{resolved}' has been added to allowed read roots.",
+            )
     except SandboxError as exc:
         return ToolResult(call_id="", ok=False, content=str(exc))
     except Exception as exc:
