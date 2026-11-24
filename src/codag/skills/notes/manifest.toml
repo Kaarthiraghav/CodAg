@@ -1,0 +1,3 @@
+name = "notes"
+description = "Create, search, and manage markdown notes in the local notes directory."
+router_keywords = ["note", "memo", "jot", "write down", "search notes", "list notes", "my notes"]

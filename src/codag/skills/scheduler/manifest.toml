@@ -1,0 +1,7 @@
+name = "scheduler"
+description = "Schedule reminders and daily briefings delivered as macOS notifications."
+router_keywords = [
+  "schedule reminder", "create reminder", "list reminders", "cancel reminder",
+  "daily briefing", "morning briefing", "remind me in", "remind me at",
+  "scheduled reminders", "set alarm"
+]

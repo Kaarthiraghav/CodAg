@@ -1,0 +1,3 @@
+name = "shell"
+description = "Execute allow-listed shell commands in the workspace."
+router_keywords = ["command", "terminal", "shell", "bash", "run", "git", "python", "npm", "cargo", "execute", "cli"]

@@ -1,0 +1,3 @@
+name = "files"
+description = "Read, search, create, and organize files in the user's allowed folders."
+router_keywords = ["file", "folder", "directory", "document", "rename", "move", "find file"]

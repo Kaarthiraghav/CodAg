@@ -1,0 +1,7 @@
+name = "system"
+description = "macOS system actions: notifications, clipboard, opening and quitting applications, and system settings."
+router_keywords = [
+  "notify", "notification", "clipboard", "pbcopy", "pbpaste",
+  "open app", "launch app", "quit app", "close app", "system setting",
+  "dark mode", "osascript"
+]

@@ -1,0 +1,3 @@
+name = "tasks"
+description = "Manage personal to-do tasks stored in a local SQLite database."
+router_keywords = ["task", "todo", "to-do", "reminder", "checklist", "add task", "list tasks", "complete task"]

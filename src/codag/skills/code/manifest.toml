@@ -1,0 +1,7 @@
+name = "code"
+description = "Plan and build software projects with test-first architecture and git-per-task commits."
+router_keywords = [
+  "code", "coding", "build project", "create project", "plan project",
+  "develop", "program", "app", "todo app", "cli app", "implement project",
+  "build a", "write code", "software project"
+]

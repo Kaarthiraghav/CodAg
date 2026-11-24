@@ -1,0 +1,6 @@
+name = "knowledge"
+description = "Index local folders of documents and ask questions with file and passage references."
+router_keywords = [
+  "document", "documents", "pdf", "index folder", "ask documents",
+  "search documents", "read folder", "knowledge base", "my docs", "paper"
+]
