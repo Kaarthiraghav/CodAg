@@ -16,6 +16,7 @@ from codag.safety.permissions import PermissionEngine
 from codag.safety.sandbox import Sandbox
 from codag.safety.snapshots import SnapshotManager
 from codag.memory.store import MemoryStore
+from codag.memory.profile import ProfileEngine
 from codag.memory.vectors import ChromaVectorStore
 from codag.memory.retrieve import configure_memory, format_memory_context, retrieve_relevant_facts
 from codag.memory.extract import extract_facts_from_user_message
@@ -57,6 +58,7 @@ class Agent:
 
         # Configure environment for all skills
         self.memory_store = MemoryStore(data_dir / "memory.db")
+        self.profile_engine = ProfileEngine(data_dir / "memory.db")
         self.vector_store = ChromaVectorStore(
             data_dir / "vectors",
             embedding_model=self.config.models.embedding,
@@ -128,10 +130,13 @@ class Agent:
         # 2. Retrieve background memory facts and build context
         relevant_facts = retrieve_relevant_facts(user_message, limit=5)
         memory_block = format_memory_context(relevant_facts)
+        profile_block = self.profile_engine.format_profile_for_prompt()
 
         system_content = SYSTEM_PROMPT
         if session and session.project_path:
             system_content += f"\n\nActive Project Workspace: {session.project_path}\nAll relative file operations, builds, and code plans should target this project path.\n"
+        if profile_block:
+            system_content += f"\n\n{profile_block}\n"
         if memory_block:
             system_content += f"\n\n{memory_block}\n"
 
@@ -581,6 +586,16 @@ class Agent:
                     f"{fact['key']}: {fact['value']}",
                     metadata=fact,
                 )
+            # Implicit interaction reflection (Hermes-style user profiling)
+            tool_names = [call.tool for call in ctx.tool_calls]
+            self.profile_engine.reflect_on_interaction(
+                turn_id=turn_id,
+                user_message=user_message,
+                assistant_message=final_content,
+                tools_used=tool_names,
+                llm=self.llm,
+                model=self.config.models.main,
+            )
         except Exception:
             pass
 

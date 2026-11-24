@@ -147,7 +147,7 @@ def chat(
         proj_info = f" | Project: {sess.project_path}" if sess.project_path else ""
         console.print(Panel(
             f"[bold green]CodAg Assistant[/bold green] [cyan][{sess.title}{proj_info}][/cyan]\n"
-            "[dim]Commands: /help, /chats, /switch <name>, /project [path], /pdf [title], /undo, /clear, /exit[/dim]",
+            "[dim]Commands: /help, /chats, /switch <name>, /project [path], /profile, /pdf [title], /undo, /clear, /exit[/dim]",
             border_style="green",
         ))
 
@@ -181,6 +181,7 @@ def chat(
                     "  [cyan]/switch <name|id>[/cyan]    Switch to another chat session\n"
                     "  [cyan]/new <title>[/cyan]         Create and switch to a new chat session\n"
                     "  [cyan]/project [path][/cyan]      View or change the active project workspace\n"
+                    "  [cyan]/profile[/cyan]             View what CodAg has learned about you\n"
                     "  [cyan]/pdf [title][/cyan]          Export the last response as a PDF and open it in Preview\n"
                     "  [cyan]/undo[/cyan]               Undo the last file modification or restore deleted file\n"
                     "  [cyan]/clear[/cyan]              Clear the terminal screen\n"
@@ -244,6 +245,20 @@ def chat(
                         console.print(f"[red]Directory not found: {arg}[/red]")
                 else:
                     console.print(f"Active project: [cyan]{session_obj.project_path or 'None (Global)'}[/cyan]")
+                continue
+
+            if cmd == "/profile":
+                prof = agent.profile_engine.get_full_profile()
+                if not prof:
+                    console.print("[dim]No profile observations recorded yet. As you chat and work, CodAg will build a model of your workflows and habits.[/dim]")
+                else:
+                    table = Table(title="Learned User Profile & Habits", border_style="cyan")
+                    table.add_column("Aspect", style="bold cyan")
+                    table.add_column("Learned Traits & Observations", style="white")
+                    for aspect, data in prof.items():
+                        bullets = "\n".join(f"• {d}" for d in data.get("details", []))
+                        table.add_row(aspect.replace("_", " ").title(), bullets or data.get("summary", "-"))
+                    console.print(table)
                 continue
 
             if cmd == "/undo":
@@ -430,6 +445,31 @@ def memory_export(format: str = typer.Option("json", help="Export format: json o
             console.print(f"- **{f['key']}** ({f['category']}): {f['value']}")
     else:
         console.print(json.dumps(facts, indent=2))
+
+
+@memory_app.command("profile")
+def memory_profile(config_dir: str = "config") -> None:
+    """Display learned user profile and habits synthesized from interactions."""
+    from codag.memory.profile import ProfileEngine
+    cfg = load_config(config_dir)
+    profile_engine = ProfileEngine(cfg.paths.resolved_data_dir / "memory.db")
+    prof = profile_engine.get_full_profile()
+    if not prof:
+        console.print("[dim]No user profile observations recorded yet.[/dim]")
+        return
+
+    table = Table(title="Learned User Profile & Habits", border_style="cyan")
+    table.add_column("Aspect", style="bold cyan")
+    table.add_column("Learned Traits & Observations", style="white")
+    table.add_column("Last Updated", style="dim")
+    for aspect, data in prof.items():
+        bullets = "\n".join(f"• {d}" for d in data.get("details", []))
+        table.add_row(
+            aspect.replace("_", " ").title(),
+            bullets or data.get("summary", "-"),
+            data.get("updated_at", "-")[:16].replace("T", " "),
+        )
+    console.print(table)
 
 
 chats_app = typer.Typer(help="Manage multi-project chat sessions")
