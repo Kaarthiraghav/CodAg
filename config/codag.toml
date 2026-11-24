@@ -1,0 +1,27 @@
+[models]
+main      = "qwen3.5:9b"
+embedding = "nomic-embed-text"
+coder     = "qwen3.5:9b"
+
+[ollama]
+host       = "http://localhost:11434"
+keep_alive = "15m"
+
+[main]
+temperature = 0.3
+num_ctx     = 8192
+think       = false
+
+[limits]
+max_model_calls_per_turn = 8
+max_tool_calls_per_turn  = 12
+tool_result_max_chars    = 6000
+command_timeout_s        = 60
+
+[paths]
+data_dir = "~/.codag"
+
+[web]
+enabled         = true
+search_provider = "duckduckgo"
+fetch_max_bytes = 2000000

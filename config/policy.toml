@@ -1,0 +1,23 @@
+[workspace]
+roots = ["~/CodAg/workspace"]
+read_roots = ["~/Documents", "~/Downloads", "~/CodAg", "/Volumes"]
+
+[limits]
+max_files_per_action = 5
+max_bytes_per_write = 200000
+
+[deny_paths]
+patterns = [
+  "~/.ssh",
+  "~/.aws",
+  "~/.gnupg",
+  "~/Library/Keychains",
+  "~/Library/Application Support/Google/Chrome",
+  "**/.env",
+  "**/*.pem",
+  "**/id_rsa*"
+]
+
+[shell]
+allow = ["ls", "cat", "pwd", "git status", "git diff", "git log", "python", "pytest", "ruff"]
+forbidden = ["sudo", "rm -rf /", "mkfs", "dd ", "chmod -R 777", "curl | sh"]
