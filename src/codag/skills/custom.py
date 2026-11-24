@@ -192,3 +192,8 @@ def delete_custom_skill(skill_name: str) -> ToolResult:
         return ToolResult(call_id="", ok=True, content=f"Deleted custom skill '{clean_name}'.")
     except Exception as exc:
         return ToolResult(call_id="", ok=False, content=f"Failed to delete custom skill '{clean_name}': {exc}")
+
+
+default_registry.register(create_custom_skill)
+default_registry.register(list_custom_skills)
+default_registry.register(delete_custom_skill)
