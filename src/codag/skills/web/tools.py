@@ -25,32 +25,75 @@ class DuckDuckGoSearchProvider(SearchProvider):
         terms = [t for t in re.findall(r"[A-Za-z0-9._-]+", query) if t.lower() not in _STOPWORDS]
         return " ".join(terms[:max_terms]) if terms else " ".join(query.split()[:max_terms])
 
-    def search(self, query: str, max_results: int = 5) -> list[dict[str, str]]:
+    @staticmethod
+    def _ddgs_query(query: str, max_results: int) -> list[dict[str, str]]:
         try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+        return [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("href", "") or r.get("link", ""),
+                "snippet": r.get("body", ""),
+            }
+            for r in results
+        ]
+
+    @staticmethod
+    def _html_fallback(query: str, max_results: int) -> list[dict[str, str]]:
+        """Direct DuckDuckGo HTML fallback if ddgs library returns empty or fails."""
+        from urllib.parse import parse_qs, unquote, urlparse
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        with httpx.Client(headers=headers, timeout=10.0, follow_redirects=True) as client:
+            resp = client.post("https://html.duckduckgo.com/html/", data={"q": query})
+            resp.raise_for_status()
+        html = resp.text
+        links = re.findall(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, flags=re.S)
+        snippets = re.findall(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', html, flags=re.S)
+        out: list[dict[str, str]] = []
+        for idx, (raw_href, raw_title) in enumerate(links[:max_results]):
+            url = raw_href
+            if "uddg=" in raw_href:
+                qs = parse_qs(urlparse(raw_href).query)
+                if "uddg" in qs:
+                    url = unquote(qs["uddg"][0])
+            title = re.sub(r"<[^>]+>", "", raw_title).strip()
+            snippet = re.sub(r"<[^>]+>", "", snippets[idx]).strip() if idx < len(snippets) else ""
+            if url.startswith(("http://", "https://")):
+                out.append({"title": title, "url": url, "snippet": snippet})
+        return out
+
+    def search(self, query: str, max_results: int = 5) -> list[dict[str, str]]:
+        queries = [query]
+        if len(query.split()) > 5:
+            queries.append(self._shorten_query(query, max_terms=6))
+        if len(query.split()) > 3:
+            queries.append(self._shorten_query(query, max_terms=4))
+
+        seen_q: set[str] = set()
+        for q in queries:
+            q_norm = q.strip().lower()
+            if not q_norm or q_norm in seen_q:
+                continue
+            seen_q.add(q_norm)
             try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=max_results))
-                if not results and len(query.split()) > 5:
-                    short_q = self._shorten_query(query, max_terms=6)
-                    if short_q and short_q.lower() != query.lower():
-                        results = list(ddgs.text(short_q, max_results=max_results))
-                if not results and len(query.split()) > 3:
-                    shorter_q = self._shorten_query(query, max_terms=4)
-                    if shorter_q and shorter_q.lower() != query.lower():
-                        results = list(ddgs.text(shorter_q, max_results=max_results))
-            return [
-                {
-                    "title": r.get("title", ""),
-                    "url": r.get("href", "") or r.get("link", ""),
-                    "snippet": r.get("body", ""),
-                }
-                for r in results
-            ]
-        except Exception:
-            return []
+                res = self._ddgs_query(q, max_results=max_results)
+                if res:
+                    return res
+            except Exception:
+                pass
+
+        for q in queries[:2]:
+            try:
+                res = self._html_fallback(q, max_results=max_results)
+                if res:
+                    return res
+            except Exception:
+                pass
+        return []
 
 
 class WebEnvironment:
