@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 import re
 from typing import Any
 from urllib.parse import urlparse
@@ -9,6 +10,8 @@ import httpx
 import trafilatura
 
 from codag.core.types import RiskTier, ToolResult
+from codag.safety.sandbox import Sandbox, SandboxError
+from codag.safety.snapshots import SnapshotManager
 from codag.skills.base import tool
 from codag.skills.registry import default_registry
 
@@ -97,17 +100,33 @@ class DuckDuckGoSearchProvider(SearchProvider):
 
 
 class WebEnvironment:
-    def __init__(self, provider: SearchProvider | None = None, fetch_max_bytes: int = 2_000_000) -> None:
+    def __init__(
+        self,
+        provider: SearchProvider | None = None,
+        fetch_max_bytes: int = 2_000_000,
+        download_max_bytes: int = 50_000_000,
+        sandbox: Sandbox | None = None,
+        snapshots: SnapshotManager | None = None,
+    ) -> None:
         self.provider = provider or DuckDuckGoSearchProvider()
         self.fetch_max_bytes = fetch_max_bytes
+        self.download_max_bytes = download_max_bytes
+        self.sandbox = sandbox
+        self.snapshots = snapshots
 
 
 _web_env = WebEnvironment()
 
 
-def configure_web(provider: SearchProvider | None = None, fetch_max_bytes: int = 2_000_000) -> None:
+def configure_web(
+    provider: SearchProvider | None = None,
+    fetch_max_bytes: int = 2_000_000,
+    download_max_bytes: int = 50_000_000,
+    sandbox: Sandbox | None = None,
+    snapshots: SnapshotManager | None = None,
+) -> None:
     global _web_env
-    _web_env = WebEnvironment(provider, fetch_max_bytes)
+    _web_env = WebEnvironment(provider, fetch_max_bytes, download_max_bytes, sandbox, snapshots)
 
 
 @tool(
@@ -348,6 +367,80 @@ def research_and_verify(query: str, num_sources: int = 4) -> ToolResult:
         return ToolResult(call_id="", ok=False, content=f"Research failed: {exc}", untrusted=True)
 
 
+@tool(
+    name="web.download_file",
+    tier=RiskTier.SAFE_WRITE,
+    description="Download a binary file (such as a PDF paper, dataset, or archive) from an HTTP/HTTPS URL and save it to local disk.",
+)
+def download_file(url: str, output_path: str) -> ToolResult:
+    """Download a file from an HTTP/HTTPS URL and save it within permitted workspace paths."""
+    clean_url = url.strip()
+    if not (clean_url.startswith("http://") or clean_url.startswith("https://")):
+        return ToolResult(
+            call_id="",
+            ok=False,
+            content=f"Forbidden URL scheme: {clean_url!r}. Only HTTP/HTTPS URLs are allowed.",
+        )
+
+    try:
+        if _web_env.sandbox:
+            resolved, _ = _web_env.sandbox.check_write(output_path)
+        else:
+            resolved = Path(output_path).expanduser().resolve()
+
+        headers = {"User-Agent": "CodAg/0.2 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        with httpx.Client(
+            headers=headers,
+            timeout=30.0,
+            follow_redirects=True,
+            max_redirects=5,
+        ) as client:
+            resp = client.get(clean_url)
+            resp.raise_for_status()
+            data = resp.content
+
+        if len(data) > _web_env.download_max_bytes:
+            return ToolResult(
+                call_id="",
+                ok=False,
+                content=f"Download exceeds size limit ({len(data)} > {_web_env.download_max_bytes} bytes).",
+            )
+
+        # If output_path is a directory, derive filename from Content-Disposition or URL
+        if resolved.is_dir() or str(output_path).endswith("/"):
+            filename = ""
+            cd = resp.headers.get("content-disposition", "")
+            m = re.search(r'filename="?([^";]+)"?', cd)
+            if m:
+                filename = Path(m.group(1)).name
+            if not filename:
+                url_name = Path(urlparse(clean_url).path).name
+                filename = url_name or "downloaded_file.pdf"
+            resolved = resolved / filename
+            if _web_env.sandbox:
+                resolved, _ = _web_env.sandbox.check_write(resolved)
+
+        undo_token = None
+        if resolved.exists() and _web_env.snapshots:
+            undo_token = _web_env.snapshots.record_pre_modification(resolved)
+
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_bytes(data)
+
+        content_type = resp.headers.get("content-type", "unknown")
+        return ToolResult(
+            call_id="",
+            ok=True,
+            content=f"Successfully downloaded {len(data):,} bytes ({content_type}) from {clean_url} to '{resolved}'.",
+            undo_token=undo_token,
+        )
+    except SandboxError as exc:
+        return ToolResult(call_id="", ok=False, content=str(exc))
+    except Exception as exc:
+        return ToolResult(call_id="", ok=False, content=f"Failed to download {clean_url}: {exc}")
+
+
 default_registry.register(search)
 default_registry.register(fetch_page)
 default_registry.register(research_and_verify)
+default_registry.register(download_file)

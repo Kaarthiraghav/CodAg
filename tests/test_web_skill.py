@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 from codag.skills.web.tools import (
     SearchProvider,
     configure_web,
+    download_file,
     fetch_page,
     research_and_verify,
     search,
@@ -121,3 +122,34 @@ def test_duckduckgo_shorten_query_helper():
     assert len(short.split()) <= 6
     assert "CPU" in short
     assert "GPU" in short
+
+
+def test_download_file_pdf_and_scheme_validation(tmp_path):
+    from codag.config import PolicyConfig
+    from codag.safety.sandbox import Sandbox
+    from codag.safety.snapshots import SnapshotManager
+
+    policy = PolicyConfig()
+    policy.workspace.roots = [str(tmp_path)]
+    sandbox = Sandbox(policy)
+    snapshots = SnapshotManager(tmp_path)
+    configure_web(sandbox=sandbox, snapshots=snapshots)
+
+    # Scheme validation
+    bad_res = download_file("file:///etc/passwd", str(tmp_path / "out.pdf"))
+    assert bad_res.ok is False
+    assert "Forbidden URL scheme" in bad_res.content
+
+    # Successful PDF download
+    pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    mock_resp = MagicMock()
+    mock_resp.headers = {"content-type": "application/pdf"}
+    mock_resp.content = pdf_bytes
+
+    target_pdf = tmp_path / "papers" / "chess_paper.pdf"
+    with patch("httpx.Client.get", return_value=mock_resp):
+        res = download_file("https://arxiv.org/pdf/2401.00001.pdf", str(target_pdf))
+
+    assert res.ok is True
+    assert target_pdf.exists()
+    assert target_pdf.read_bytes() == pdf_bytes

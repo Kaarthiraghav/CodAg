@@ -4,5 +4,6 @@ router_keywords = [
   "search web", "google", "duckduckgo", "look up online", "browse",
   "website", "url", "web page", "fetch page", "online", "internet",
   "http", "https", "find online", "latest news", "research",
-  "fact check", "verify", "cross check", "sources", "citations", "scrape"
+  "fact check", "verify", "cross check", "sources", "citations", "scrape",
+  "download pdf", "download file"
 ]

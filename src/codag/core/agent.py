@@ -71,7 +71,11 @@ class Agent:
         configure_shell(ws_root)
         configure_tasks(data_dir / "tasks.db")
         configure_notes(data_dir / "notes")
-        configure_web(fetch_max_bytes=self.config.web.fetch_max_bytes)
+        configure_web(
+            fetch_max_bytes=self.config.web.fetch_max_bytes,
+            sandbox=self.sandbox,
+            snapshots=self.snapshots,
+        )
         configure_knowledge(self.sandbox, self.vector_store)
         configure_code(
             sandbox=self.sandbox,
