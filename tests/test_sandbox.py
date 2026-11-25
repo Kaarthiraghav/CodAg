@@ -95,3 +95,12 @@ def test_sandbox_expands_whoami_and_user_vars(tmp_path: Path):
     ]
     out = _stream_agent_turn(mock_agent, "hello")
     assert out == "Done!"
+
+    # Also verify plain str chunks yielded by run_turn are handled
+    mock_agent.run_turn.return_value = [
+        "Hello ",
+        "world!",
+        AgentEvent(event_type="turn_finished", turn_id="t2", payload={"content": ""}),
+    ]
+    out_str = _stream_agent_turn(mock_agent, "hello")
+    assert out_str == "Hello world!"

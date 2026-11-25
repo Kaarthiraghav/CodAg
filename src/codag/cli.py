@@ -102,10 +102,19 @@ def doctor(config_dir: str = "config") -> None:
 
 
 def _stream_agent_turn(agent: Agent, user_input: str, session_id: str | None = None) -> str:
-    """Stream an agent turn, rendering AgentEvents cleanly to the terminal."""
+    """Stream an agent turn, rendering both raw str chunks and AgentEvents cleanly."""
     turn_chunks: list[str] = []
     printed_prefix = False
     for event in agent.run_turn(user_input, session_id=session_id):
+        if isinstance(event, str):
+            if event:
+                if not printed_prefix:
+                    console.print("[bold green]CodAg>[/bold green] ", end="")
+                    printed_prefix = True
+                console.print(event, end="")
+                turn_chunks.append(event)
+            continue
+
         etype = getattr(event, "event_type", None)
         payload = getattr(event, "payload", {}) or {}
 
