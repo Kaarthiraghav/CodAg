@@ -1,7 +1,8 @@
 name = "web"
-description = "Search the internet and read web pages with source citations."
+description = "Search the internet, scrape multiple sources, and produce cross-checked answers with citations."
 router_keywords = [
   "search web", "google", "duckduckgo", "look up online", "browse",
   "website", "url", "web page", "fetch page", "online", "internet",
-  "http", "https", "find online", "latest news"
+  "http", "https", "find online", "latest news", "research",
+  "fact check", "verify", "cross check", "sources", "citations", "scrape"
 ]
