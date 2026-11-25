@@ -3,6 +3,7 @@ from codag.skills.web.tools import (
     SearchProvider,
     configure_web,
     download_file,
+    download_papers,
     fetch_page,
     research_and_verify,
     search,
@@ -153,3 +154,44 @@ def test_download_file_pdf_and_scheme_validation(tmp_path):
     assert res.ok is True
     assert target_pdf.exists()
     assert target_pdf.read_bytes() == pdf_bytes
+
+
+def test_download_papers_arxiv_mock(tmp_path):
+    from codag.config import PolicyConfig
+    from codag.safety.sandbox import Sandbox
+    from codag.safety.snapshots import SnapshotManager
+
+    policy = PolicyConfig()
+    policy.workspace.roots = [str(tmp_path)]
+    configure_web(sandbox=Sandbox(policy), snapshots=SnapshotManager(tmp_path))
+
+    arxiv_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <id>http://arxiv.org/abs/2401.12345v1</id>
+        <title>Blunder Dynamics in Speed Chess</title>
+      </entry>
+      <entry>
+        <id>http://arxiv.org/abs/2311.54321v1</id>
+        <title>Time Pressure and Decision Quality</title>
+      </entry>
+    </feed>"""
+
+    def fake_get(self, url, **kwargs):
+        resp = MagicMock()
+        if "export.arxiv.org" in url:
+            resp.text = arxiv_xml
+        elif "arxiv.org/pdf/" in url:
+            resp.content = b"%PDF-1.5\n%mock pdf"
+        else:
+            resp.json.return_value = {"results": []}
+        return resp
+
+    out_dir = tmp_path / "papers"
+    with patch("httpx.Client.get", new=fake_get):
+        res = download_papers("speed chess blunders", str(out_dir), max_papers=2)
+
+    assert res.ok is True
+    assert "Downloaded 2 PDF papers" in res.content
+    assert (out_dir / "Blunder_Dynamics_in_Speed_Chess.pdf").exists()
+    assert (out_dir / "Time_Pressure_and_Decision_Quality.pdf").exists()

@@ -63,6 +63,7 @@ KEYWORD_PATTERNS: dict[str, list[str]] = {
         "latest news", "latest information", "what is the latest", "find online",
         "research", "fact check", "verify", "cross check", "cross-check",
         "sources", "citations", "scrape", "download pdf", "download file",
+        "download", "download papers", "arxiv",
     ],
     "knowledge": [
         "document", "documents", "pdf", "index folder", "ask documents",

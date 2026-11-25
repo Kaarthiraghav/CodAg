@@ -440,7 +440,131 @@ def download_file(url: str, output_path: str) -> ToolResult:
         return ToolResult(call_id="", ok=False, content=f"Failed to download {clean_url}: {exc}")
 
 
+@tool(
+    name="web.download_papers",
+    tier=RiskTier.SAFE_WRITE,
+    description="Search arXiv and OpenAlex for open-access academic papers on a topic and download their PDFs into a local directory.",
+)
+def download_papers(query: str, output_dir: str, max_papers: int = 25) -> ToolResult:
+    """Batch-search arXiv and OpenAlex and download valid PDFs into output_dir."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import quote_plus
+
+    target_count = max(1, min(int(max_papers), 50))
+    try:
+        if _web_env.sandbox:
+            resolved_dir, _ = _web_env.sandbox.check_write(output_dir)
+        else:
+            resolved_dir = Path(output_dir).expanduser().resolve()
+        resolved_dir.mkdir(parents=True, exist_ok=True)
+    except SandboxError as exc:
+        return ToolResult(call_id="", ok=False, content=str(exc))
+    except Exception as exc:
+        return ToolResult(call_id="", ok=False, content=f"Cannot prepare output directory {output_dir!r}: {exc}")
+
+    headers = {"User-Agent": "CodAg/0.2 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+    candidates: list[tuple[str, str]] = []  # (title, pdf_url)
+    seen_urls: set[str] = set()
+
+    # 1. Search arXiv API
+    try:
+        arxiv_url = (
+            f"https://export.arxiv.org/api/query?"
+            f"search_query=all:{quote_plus(query)}&start=0&max_results={min(target_count * 2, 80)}&sortBy=relevance"
+        )
+        with httpx.Client(headers=headers, timeout=20.0, follow_redirects=True) as client:
+            resp = client.get(arxiv_url)
+            resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        for entry in root.findall("atom:entry", ns):
+            title_el = entry.find("atom:title", ns)
+            id_el = entry.find("atom:id", ns)
+            if title_el is None or id_el is None or not id_el.text:
+                continue
+            title = " ".join((title_el.text or "paper").split())
+            arxiv_id = id_el.text.strip().rstrip("/").split("/")[-1]
+            pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            if pdf_url not in seen_urls:
+                seen_urls.add(pdf_url)
+                candidates.append((title, pdf_url))
+    except Exception:
+        pass
+
+    # 2. Supplement with OpenAlex open-access PDFs if needed
+    if len(candidates) < target_count:
+        try:
+            oa_url = (
+                f"https://api.openalex.org/works?"
+                f"search={quote_plus(query)}&filter=is_oa:true&per-page={min(target_count * 2, 50)}"
+            )
+            with httpx.Client(headers=headers, timeout=20.0, follow_redirects=True) as client:
+                oa_resp = client.get(oa_url)
+                oa_resp.raise_for_status()
+            for work in oa_resp.json().get("results", []):
+                title = " ".join((work.get("title") or "paper").split())
+                best_loc = work.get("best_oa_location") or {}
+                pdf_url = best_loc.get("pdf_url") or (work.get("open_access") or {}).get("oa_url") or ""
+                if pdf_url.startswith(("http://", "https://")) and pdf_url not in seen_urls:
+                    seen_urls.add(pdf_url)
+                    candidates.append((title, pdf_url))
+        except Exception:
+            pass
+
+    if not candidates:
+        return ToolResult(
+            call_id="",
+            ok=False,
+            content=f"No open-access papers found for {query!r} on arXiv or OpenAlex.",
+        )
+
+    downloaded: list[str] = []
+
+    def _download_one(item: tuple[str, str]) -> str | None:
+        title, pdf_url = item
+        try:
+            with httpx.Client(headers=headers, timeout=25.0, follow_redirects=True, max_redirects=5) as client:
+                r = client.get(pdf_url)
+                r.raise_for_status()
+                data = r.content
+            if len(data) > _web_env.download_max_bytes or not data.startswith(b"%PDF"):
+                return None
+            safe_name = re.sub(r"[^\w\s-]", "", title).strip()
+            safe_name = re.sub(r"[\s_-]+", "_", safe_name)[:70] or "paper"
+            out_file = resolved_dir / f"{safe_name}.pdf"
+            out_file.write_bytes(data)
+            return f"{title} -> {out_file.name}"
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        for res in pool.map(_download_one, candidates[: target_count * 2]):
+            if res:
+                downloaded.append(res)
+                if len(downloaded) >= target_count:
+                    break
+
+    if not downloaded:
+        return ToolResult(
+            call_id="",
+            ok=False,
+            content=f"Found {len(candidates)} candidate links for {query!r}, but none returned valid PDF files.",
+        )
+
+    summary_lines = [
+        f"Downloaded {len(downloaded)} PDF papers to '{resolved_dir}':",
+        "",
+    ] + [f"{i}. {line}" for i, line in enumerate(downloaded, start=1)]
+
+    return ToolResult(
+        call_id="",
+        ok=True,
+        content="\n".join(summary_lines),
+    )
+
+
 default_registry.register(search)
 default_registry.register(fetch_page)
 default_registry.register(research_and_verify)
 default_registry.register(download_file)
+default_registry.register(download_papers)
