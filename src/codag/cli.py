@@ -101,20 +101,53 @@ def doctor(config_dir: str = "config") -> None:
         raise typer.Exit(code=1)
 
 
+def _stream_agent_turn(agent: Agent, user_input: str, session_id: str | None = None) -> str:
+    """Stream an agent turn, rendering AgentEvents cleanly to the terminal."""
+    turn_chunks: list[str] = []
+    printed_prefix = False
+    for event in agent.run_turn(user_input, session_id=session_id):
+        etype = getattr(event, "event_type", None)
+        payload = getattr(event, "payload", {}) or {}
+
+        if etype == "text_delta":
+            text = payload.get("text", "")
+            if text:
+                if not printed_prefix:
+                    console.print("[bold green]CodAg>[/bold green] ", end="")
+                    printed_prefix = True
+                console.print(text, end="")
+                turn_chunks.append(text)
+        elif etype == "tool_started":
+            tool_name = payload.get("tool", "tool")
+            console.print(f"\n[dim]→ Executing {tool_name}...[/dim]")
+            printed_prefix = False
+        elif etype == "tool_finished":
+            tool_name = payload.get("tool", "tool")
+            ok = payload.get("ok", True)
+            if not ok:
+                err_snippet = str(payload.get("content", ""))[:160]
+                console.print(f"[yellow]  ✗ {tool_name}: {err_snippet}[/yellow]")
+        elif etype == "error":
+            console.print(f"\n[red]Error: {payload.get('error', 'Unknown error')}[/red]")
+        elif etype == "turn_finished":
+            final_text = payload.get("content", "")
+            if final_text and not turn_chunks:
+                console.print(f"[bold green]CodAg>[/bold green] {final_text}", end="")
+                turn_chunks.append(final_text)
+
+    console.print()
+    return "".join(turn_chunks)
+
+
 @app.command()
 def ask(question: str, config_dir: str = "config") -> None:
     """Ask a single question or command using the agent turn pipeline."""
     cfg = load_config(config_dir)
     agent = Agent(cfg)
 
-    full_output = []
-    for chunk in agent.run_turn(question):
-        console.print(chunk, end="")
-        full_output.append(chunk)
-    console.print()
+    full_text = _stream_agent_turn(agent, question)
 
     # Open PDF automatically if generated
-    full_text = "".join(full_output)
     if "Successfully generated PDF document at '" in full_text:
         match = re.search(r"Successfully generated PDF document at '([^']+)'", full_text)
         if match:
@@ -301,15 +334,8 @@ def chat(
             console.print(f"[yellow]Unknown command '{cmd}'. Type /help for available commands.[/yellow]")
             continue
 
-        turn_chunks: list[str] = []
-        console.print("[bold green]CodAg>[/bold green] ", end="")
         try:
-            for chunk in agent.run_turn(user_input, session_id=session_obj.id):
-                console.print(chunk, end="")
-                turn_chunks.append(chunk)
-            console.print()
-
-            full_resp = "".join(turn_chunks)
+            full_resp = _stream_agent_turn(agent, user_input, session_id=session_obj.id)
             if full_resp:
                 last_assistant_response = full_resp
 

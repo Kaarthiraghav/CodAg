@@ -1,7 +1,10 @@
 """Filesystem sandbox, path resolution, and boundary enforcement."""
 
 import fnmatch
+import getpass
+import os
 from pathlib import Path
+import re
 
 from codag.config import PolicyConfig
 
@@ -38,7 +41,12 @@ class Sandbox:
         return resolved
 
     def resolve_path(self, path: str | Path) -> Path:
-        """Resolve path to absolute real path, resolving symlinks and volume aliases."""
+        """Resolve path to absolute real path, resolving symlinks, user vars, and volume aliases."""
+        if isinstance(path, str):
+            username = getpass.getuser()
+            path = re.sub(r"\$\(whoami\)|\$\(id\s+-un\)", username, path)
+            path = path.replace("${USER}", username).replace("$USER", username)
+            path = os.path.expandvars(path)
         raw = Path(path).expanduser()
 
         # Check volume aliasing on macOS if path doesn't exist directly
