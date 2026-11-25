@@ -60,8 +60,9 @@ KEYWORD_PATTERNS: dict[str, list[str]] = {
     "web": [
         "search web", "google", "duckduckgo", "look up online", "browse",
         "website", "url", "web page", "fetch page", "online", "internet",
-        "latest news", "find online", "research", "fact check", "verify",
-        "cross check", "cross-check", "sources", "citations", "scrape",
+        "latest news", "latest information", "what is the latest", "find online",
+        "research", "fact check", "verify", "cross check", "cross-check",
+        "sources", "citations", "scrape",
     ],
     "knowledge": [
         "document", "documents", "pdf", "index folder", "ask documents",

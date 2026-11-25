@@ -134,7 +134,9 @@ class Agent:
         memory_block = format_memory_context(relevant_facts)
         profile_block = self.profile_engine.format_profile_for_prompt()
 
-        system_content = SYSTEM_PROMPT
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M %Z").strip()
+        system_content = f"{SYSTEM_PROMPT}\n\nCurrent Local Date & Time: {now_str}"
         if session and session.project_path:
             system_content += f"\n\nActive Project Workspace: {session.project_path}\nAll relative file operations, builds, and code plans should target this project path.\n"
         if profile_block:
@@ -379,7 +381,9 @@ class Agent:
         relevant_facts = retrieve_relevant_facts(user_message, limit=5)
         memory_block = format_memory_context(relevant_facts)
 
-        system_content = SYSTEM_PROMPT
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M %Z").strip()
+        system_content = f"{SYSTEM_PROMPT}\n\nCurrent Local Date & Time: {now_str}"
         if session and session.project_path:
             system_content += f"\n\nActive Project Workspace: {session.project_path}\nAll relative file operations, builds, and code plans should target this project path.\n"
         if speakable:
