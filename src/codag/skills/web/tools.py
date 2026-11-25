@@ -20,6 +20,11 @@ class SearchProvider(ABC):
 
 
 class DuckDuckGoSearchProvider(SearchProvider):
+    @staticmethod
+    def _shorten_query(query: str, max_terms: int = 6) -> str:
+        terms = [t for t in re.findall(r"[A-Za-z0-9._-]+", query) if t.lower() not in _STOPWORDS]
+        return " ".join(terms[:max_terms]) if terms else " ".join(query.split()[:max_terms])
+
     def search(self, query: str, max_results: int = 5) -> list[dict[str, str]]:
         try:
             try:
@@ -28,6 +33,14 @@ class DuckDuckGoSearchProvider(SearchProvider):
                 from duckduckgo_search import DDGS
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
+                if not results and len(query.split()) > 5:
+                    short_q = self._shorten_query(query, max_terms=6)
+                    if short_q and short_q.lower() != query.lower():
+                        results = list(ddgs.text(short_q, max_results=max_results))
+                if not results and len(query.split()) > 3:
+                    shorter_q = self._shorten_query(query, max_terms=4)
+                    if shorter_q and shorter_q.lower() != query.lower():
+                        results = list(ddgs.text(shorter_q, max_results=max_results))
             return [
                 {
                     "title": r.get("title", ""),

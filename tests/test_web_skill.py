@@ -109,3 +109,15 @@ def test_research_and_verify_snippet_fallback():
         assert res.untrusted is True
         assert "web_search_snippets_only" in res.content
         assert "https://apple.com/mac-mini/specs" in res.content
+
+
+def test_duckduckgo_shorten_query_helper():
+    from codag.skills.web.tools import DuckDuckGoSearchProvider
+
+    short = DuckDuckGoSearchProvider._shorten_query(
+        "what are the exact CPU GPU Neural Engine cores of Apple M4 Mac mini specifications",
+        max_terms=6,
+    )
+    assert len(short.split()) <= 6
+    assert "CPU" in short
+    assert "GPU" in short
