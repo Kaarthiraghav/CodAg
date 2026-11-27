@@ -8,7 +8,7 @@ import time
 from typing import Any
 import ollama
 
-from codag.config import GeminiConfig, MainModelConfig, OllamaConfig
+from codag.config import GeminiConfig, MainModelConfig, OllamaConfig, load_codag_env
 from codag.core.events import EventLogger
 
 
@@ -232,6 +232,7 @@ class GeminiClient:
     ) -> None:
         self.cfg = gemini_cfg
         self.logger = logger
+        load_codag_env()
         self._api_key = api_key or os.environ.get(gemini_cfg.api_key_env, "")
         self._client = client
 
@@ -333,11 +334,29 @@ class GeminiClient:
         gen_config = types.GenerateContentConfig(**config_kwargs)
 
         start_time = time.perf_counter()
-        raw_resp = client.models.generate_content(
-            model=target_model,
-            contents=contents,
-            config=gen_config,
-        )
+        candidate_models = [target_model] + [m for m in self.cfg.fallback_models if m != target_model]
+        raw_resp = None
+        last_exc: Exception | None = None
+        used_model = target_model
+        for cand_model in candidate_models:
+            try:
+                raw_resp = client.models.generate_content(
+                    model=cand_model,
+                    contents=contents,
+                    config=gen_config,
+                )
+                used_model = cand_model
+                break
+            except Exception as exc:
+                last_exc = exc
+                err_msg = str(exc)
+                # Retry next Gemini model only on model availability / temporary capacity errors
+                if any(tok in err_msg for tok in ("404", "503", "NOT_FOUND", "UNAVAILABLE")):
+                    continue
+                raise
+        if raw_resp is None and last_exc is not None:
+            raise last_exc
+        target_model = used_model
         duration_s = time.perf_counter() - start_time
 
         text_parts: list[str] = []

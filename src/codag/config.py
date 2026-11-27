@@ -18,7 +18,8 @@ class OllamaConfig(BaseModel):
 
 class GeminiConfig(BaseModel):
     enabled: bool = True
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-3.5-flash"
+    fallback_models: list[str] = Field(default_factory=lambda: ["gemini-3.5-flash-lite", "gemini-3.8-flash"])
     api_key_env: str = "GEMINI_API_KEY"
 
 
@@ -107,7 +108,25 @@ class CodagConfig(BaseModel):
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
 
 
+def load_codag_env(data_dir: Path | str | None = None) -> None:
+    """Load key=value pairs from ~/.codag/.env into os.environ without overriding existing vars."""
+    import os
+    env_file = (Path(data_dir).expanduser() if data_dir else Path.home() / ".codag") / ".env"
+    if not env_file.is_file():
+        return
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
+
+
 def load_config(config_dir: Path | str | None = None) -> CodagConfig:
+    load_codag_env()
     base_dir = Path(config_dir) if config_dir else Path("config")
     codag_file = base_dir / "codag.toml"
     policy_file = base_dir / "policy.toml"
