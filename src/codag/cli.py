@@ -96,6 +96,16 @@ def doctor(config_dir: str = "config") -> None:
         table.add_row("Ollama Service", "[red]ERROR[/red]", f"Cannot connect: {exc}")
         all_passed = False
 
+    import os
+    gem_key = os.environ.get(cfg.gemini.api_key_env, "")
+    if cfg.gemini.enabled and gem_key:
+        table.add_row("Gemini API", "[green]OK[/green]", f"{cfg.gemini.model} ({cfg.gemini.api_key_env} set)")
+    elif cfg.gemini.enabled:
+        table.add_row("Gemini API", "[yellow]NO KEY[/yellow]", f"Set {cfg.gemini.api_key_env} to enable cloud orchestration")
+    else:
+        table.add_row("Gemini API", "[dim]DISABLED[/dim]", "Local-only mode")
+    table.add_row("Orchestrator Mode", "[cyan]ACTIVE[/cyan]", f"mode={cfg.orchestrator.mode} (complex: {', '.join(cfg.orchestrator.complex_skills)})")
+
     console.print(table)
     if not all_passed:
         raise typer.Exit(code=1)
@@ -224,6 +234,7 @@ def chat(
                     "  [cyan]/new <title>[/cyan]         Create and switch to a new chat session\n"
                     "  [cyan]/project [path][/cyan]      View or change the active project workspace\n"
                     "  [cyan]/profile[/cyan]             View what CodAg has learned about you\n"
+                    "  [cyan]/model [mode][/cyan]        View or switch orchestrator mode (auto, local, gemini)\n"
                     "  [cyan]/skills[/cyan]              List all active built-in and autonomous custom skills\n"
                     "  [cyan]/pdf [title][/cyan]          Export the last response as a PDF and open it in Preview\n"
                     "  [cyan]/undo[/cyan]               Undo the last file modification or restore deleted file\n"
@@ -237,6 +248,28 @@ def chat(
             if cmd == "/clear":
                 console.clear()
                 print_banner(session_obj)
+                continue
+
+            if cmd == "/model":
+                if not getattr(agent, "orchestrator", None):
+                    console.print("[yellow]Orchestrator is not active in this session.[/yellow]")
+                    continue
+                orch = agent.orchestrator
+                if arg:
+                    try:
+                        new_mode = orch.set_mode(arg)
+                        console.print(f"[green]Orchestrator mode set to: {new_mode}[/green]")
+                    except ValueError as exc:
+                        console.print(f"[red]{exc}[/red]")
+                else:
+                    st = orch.status()
+                    gem_status = "[green]available[/green]" if st["gemini_available"] else f"[yellow]unavailable (set {agent.config.gemini.api_key_env})[/yellow]"
+                    console.print(
+                        f"Orchestrator Mode: [bold cyan]{st['mode']}[/bold cyan]\n"
+                        f"  Local Model:  {st['local_model']}\n"
+                        f"  Gemini Model: {st['gemini_model']} ({gem_status})\n"
+                        f"  Complex Skills -> Gemini: {', '.join(st['complex_skills'])}"
+                    )
                 continue
 
             if cmd == "/chats":

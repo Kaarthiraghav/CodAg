@@ -7,6 +7,17 @@ coder     = "qwen3.5:9b"
 host       = "http://localhost:11434"
 keep_alive = "15m"
 
+[gemini]
+enabled     = true
+model       = "gemini-2.5-flash"
+api_key_env = "GEMINI_API_KEY"
+
+[orchestrator]
+mode                    = "auto"
+complex_skills          = ["code", "web", "custom_skills"]
+context_overflow_chars  = 18000
+prefer_local_for_private = true
+
 [main]
 temperature = 0.3
 num_ctx     = 8192

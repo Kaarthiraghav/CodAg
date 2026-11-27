@@ -6,6 +6,7 @@ from typing import Any
 
 from codag.config import CodagConfig
 from codag.core.events import EventLogger
+from codag.core.orchestrator import ModelOrchestrator
 from codag.core.router import SkillRouter
 from codag.core.types import AgentEvent, Decision, RiskTier, ToolCall, ToolResult, ToolSpec, TurnContext
 from codag.llm import LLMClient
@@ -54,7 +55,12 @@ class Agent:
         self.permissions = PermissionEngine(config.policy, self.sandbox)
         self.confirm_ux = confirm_ux or ConfirmUX()
         self.registry = registry or default_registry
-        self.llm = llm or LLMClient(config.ollama, logger=self.logger)
+        if llm is not None:
+            self.orchestrator: ModelOrchestrator | None = llm if isinstance(llm, ModelOrchestrator) else None
+            self.llm = llm
+        else:
+            self.orchestrator = ModelOrchestrator(config, logger=self.logger)
+            self.llm = self.orchestrator
         self.router = router or SkillRouter(self.llm, model=self.config.models.main)
 
         # Configure environment for all skills

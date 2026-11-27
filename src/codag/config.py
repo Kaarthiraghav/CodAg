@@ -16,6 +16,19 @@ class OllamaConfig(BaseModel):
     keep_alive: str = "15m"
 
 
+class GeminiConfig(BaseModel):
+    enabled: bool = True
+    model: str = "gemini-2.5-flash"
+    api_key_env: str = "GEMINI_API_KEY"
+
+
+class OrchestratorConfig(BaseModel):
+    mode: str = "auto"  # "auto" | "local" | "gemini"
+    complex_skills: list[str] = Field(default_factory=lambda: ["code", "web", "custom_skills"])
+    context_overflow_chars: int = 18000
+    prefer_local_for_private: bool = True
+
+
 class MainModelConfig(BaseModel):
     temperature: float = 0.3
     num_ctx: int = 8192
@@ -85,6 +98,8 @@ class PolicyConfig(BaseModel):
 class CodagConfig(BaseModel):
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
+    gemini: GeminiConfig = Field(default_factory=GeminiConfig)
+    orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     main: MainModelConfig = Field(default_factory=MainModelConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
