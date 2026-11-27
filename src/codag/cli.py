@@ -111,10 +111,23 @@ def doctor(config_dir: str = "config") -> None:
         raise typer.Exit(code=1)
 
 
+def _format_token_usage(usage: dict) -> str:
+    in_tok = int(usage.get("input_tokens", 0) or 0)
+    out_tok = int(usage.get("output_tokens", 0) or 0)
+    think_tok = int(usage.get("thinking_tokens", 0) or 0)
+    tot_tok = int(usage.get("total_tokens", in_tok + out_tok + think_tok) or 0)
+    models = usage.get("models") or []
+    model_str = f" ({', '.join(models)})" if models else ""
+    return (
+        f"[dim]Tokens: input {in_tok:,} | output {out_tok:,} | thinking {think_tok:,} | total {tot_tok:,}{model_str}[/dim]"
+    )
+
+
 def _stream_agent_turn(agent: Agent, user_input: str, session_id: str | None = None) -> str:
     """Stream an agent turn, rendering both raw str chunks and AgentEvents cleanly."""
     turn_chunks: list[str] = []
     printed_prefix = False
+    turn_usage: dict | None = None
     for event in agent.run_turn(user_input, session_id=session_id):
         if isinstance(event, str):
             if event:
@@ -153,8 +166,16 @@ def _stream_agent_turn(agent: Agent, user_input: str, session_id: str | None = N
             if final_text and not turn_chunks:
                 console.print(f"[bold green]CodAg>[/bold green] {final_text}", end="")
                 turn_chunks.append(final_text)
+            if isinstance(payload.get("usage"), dict):
+                turn_usage = payload["usage"]
 
     console.print()
+    if turn_usage is None:
+        cand_usage = getattr(agent, "last_turn_usage", None)
+        if isinstance(cand_usage, dict) and cand_usage:
+            turn_usage = cand_usage
+    if isinstance(turn_usage, dict) and turn_usage:
+        console.print(_format_token_usage(turn_usage))
     return "".join(turn_chunks)
 
 

@@ -37,7 +37,57 @@ class _NormalizedResponse:
     message: _NormalizedMessage
     prompt_eval_count: int | None = None
     eval_count: int | None = None
+    thinking_eval_count: int | None = None
     provider: str = "ollama"
+    model_name: str = ""
+
+
+def _safe_int(val: Any) -> int:
+    return val if isinstance(val, int) and not isinstance(val, bool) else 0
+
+
+def extract_token_usage(response: Any, fallback_model: str = "") -> dict[str, Any]:
+    """Extract normalized input, output, and thinking token counts from Ollama or Gemini responses."""
+    input_tokens = _safe_int(getattr(response, "prompt_eval_count", 0))
+    raw_output = _safe_int(getattr(response, "eval_count", 0))
+    explicit_thinking = getattr(response, "thinking_eval_count", None)
+
+    if isinstance(explicit_thinking, int) and not isinstance(explicit_thinking, bool):
+        thinking_tokens = max(0, explicit_thinking)
+        output_tokens = max(0, raw_output)
+    else:
+        msg = getattr(response, "message", None)
+        thinking_text = getattr(msg, "thinking", None) if msg is not None else None
+        content_text = getattr(msg, "content", None) if msg is not None else None
+        if isinstance(thinking_text, str) and thinking_text:
+            t_len = len(thinking_text)
+            c_len = len(content_text) if isinstance(content_text, str) else 0
+            if raw_output > 0:
+                thinking_tokens = max(1, round(raw_output * t_len / max(1, t_len + c_len)))
+                thinking_tokens = min(thinking_tokens, raw_output)
+                output_tokens = max(0, raw_output - thinking_tokens)
+            else:
+                thinking_tokens = max(1, t_len // 4)
+                output_tokens = 0
+        else:
+            thinking_tokens = 0
+            output_tokens = raw_output
+
+    provider = getattr(response, "provider", "ollama")
+    if not isinstance(provider, str):
+        provider = "ollama"
+    model_name = getattr(response, "model_name", None) or getattr(response, "model", None) or fallback_model
+    if not isinstance(model_name, str):
+        model_name = fallback_model
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "thinking_tokens": thinking_tokens,
+        "total_tokens": input_tokens + output_tokens + thinking_tokens,
+        "provider": provider,
+        "model": model_name,
+    }
 
 
 class LLMClient:
@@ -105,6 +155,7 @@ class LLMClient:
         tool_calls = getattr(response.message, "tool_calls", None)
         prompt_tokens = getattr(response, "prompt_eval_count", None)
         completion_tokens = getattr(response, "eval_count", None)
+        usage_info = extract_token_usage(response, fallback_model=model)
 
         # Context window warning: log warning when prompt tokens exceed 85% of num_ctx
         if prompt_tokens and prompt_tokens > 0.85 * settings.num_ctx:
@@ -128,6 +179,7 @@ class LLMClient:
                 tool_calls=[tc.model_dump() if hasattr(tc, "model_dump") else str(tc) for tc in (tool_calls or [])],
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                thinking_tokens=usage_info["thinking_tokens"],
                 latency_s=round(duration_s, 3),
             )
 
@@ -314,8 +366,9 @@ class GeminiClient:
             content = raw_resp.text
 
         usage = getattr(raw_resp, "usage_metadata", None)
-        prompt_tokens = getattr(usage, "prompt_token_count", None) if usage else None
-        completion_tokens = getattr(usage, "candidates_token_count", None) if usage else None
+        prompt_tokens = _safe_int(getattr(usage, "prompt_token_count", 0)) if usage else 0
+        completion_tokens = _safe_int(getattr(usage, "candidates_token_count", 0)) if usage else 0
+        thinking_tokens = _safe_int(getattr(usage, "thoughts_token_count", 0)) if usage else 0
 
         if self.logger:
             self.logger.log(
@@ -328,6 +381,7 @@ class GeminiClient:
                 tool_calls=[tc.model_dump() for tc in parsed_calls],
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                thinking_tokens=thinking_tokens,
                 latency_s=round(duration_s, 3),
             )
 
@@ -338,7 +392,9 @@ class GeminiClient:
             ),
             prompt_eval_count=prompt_tokens,
             eval_count=completion_tokens,
+            thinking_eval_count=thinking_tokens,
             provider="gemini",
+            model_name=target_model,
         )
 
     def stream_chat(

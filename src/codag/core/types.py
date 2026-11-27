@@ -52,6 +52,10 @@ class TurnContext(BaseModel):
     tainted: bool = False
     model_calls_count: int = 0
     tool_calls_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    thinking_tokens: int = 0
+    models_used: list[str] = Field(default_factory=list)
 
 
 class AgentEvent(BaseModel):

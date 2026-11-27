@@ -9,7 +9,7 @@ from codag.core.events import EventLogger
 from codag.core.orchestrator import ModelOrchestrator
 from codag.core.router import SkillRouter
 from codag.core.types import AgentEvent, Decision, RiskTier, ToolCall, ToolResult, ToolSpec, TurnContext
-from codag.llm import LLMClient
+from codag.llm import LLMClient, extract_token_usage
 from codag.prompts import SYSTEM_PROMPT
 from codag.safety.audit import AuditLogger
 from codag.safety.confirm import ConfirmUX
@@ -94,6 +94,27 @@ class Agent:
         configure_scheduler(data_dir / "scheduler.db", data_dir / "tasks.db")
         configure_custom_skills(data_dir / "skills", registry=self.registry)
         self.chat_manager = ChatManager(data_dir / "chats.db")
+        self.last_turn_usage: dict[str, Any] = {}
+
+    def _record_turn_usage(self, ctx: TurnContext, response: Any) -> None:
+        info = extract_token_usage(response, fallback_model=self.config.models.main)
+        ctx.input_tokens += info["input_tokens"]
+        ctx.output_tokens += info["output_tokens"]
+        ctx.thinking_tokens += info["thinking_tokens"]
+        label = f"{info['provider']}:{info['model']}" if info["model"] else info["provider"]
+        if label and label not in ctx.models_used:
+            ctx.models_used.append(label)
+
+    def _finalize_turn_usage(self, ctx: TurnContext) -> dict[str, Any]:
+        usage = {
+            "input_tokens": ctx.input_tokens,
+            "output_tokens": ctx.output_tokens,
+            "thinking_tokens": ctx.thinking_tokens,
+            "total_tokens": ctx.input_tokens + ctx.output_tokens + ctx.thinking_tokens,
+            "models": list(ctx.models_used),
+        }
+        self.last_turn_usage = usage
+        return usage
 
     def _convert_specs_to_ollama_tools(self, specs: list[ToolSpec]) -> list[dict[str, Any]]:
         ollama_tools = []
@@ -173,6 +194,7 @@ class Agent:
                 tools=tool_definitions if tool_definitions else None,
                 turn_id=turn_id,
             )
+            self._record_turn_usage(ctx, response)
 
             msg = response.message
             raw_tool_calls = getattr(msg, "tool_calls", None)
@@ -302,6 +324,7 @@ class Agent:
                     tools=None,
                     turn_id=turn_id,
                 )
+                self._record_turn_usage(ctx, summary_resp)
                 final_content = summary_resp.message.content or ""
                 if final_content:
                     yield AgentEvent(event_type="text_delta", turn_id=turn_id, payload={"text": final_content})
@@ -317,6 +340,7 @@ class Agent:
                     tools=None,
                     turn_id=turn_id,
                 )
+                self._record_turn_usage(ctx, summary_resp)
                 final_content = summary_resp.message.content or ""
                 if final_content:
                     yield final_content
@@ -352,6 +376,7 @@ class Agent:
                 )
         except Exception:
             pass
+        self._finalize_turn_usage(ctx)
 
     def run_turn_events(
         self,
@@ -420,6 +445,7 @@ class Agent:
                 tools=tool_definitions if tool_definitions else None,
                 turn_id=turn_id,
             )
+            self._record_turn_usage(ctx, response)
 
             msg = response.message
             raw_tool_calls = getattr(msg, "tool_calls", None)
@@ -576,6 +602,7 @@ class Agent:
                     tools=None,
                     turn_id=turn_id,
                 )
+                self._record_turn_usage(ctx, summary_resp)
                 final_content = summary_resp.message.content or ""
                 if final_content:
                     yield AgentEvent(event_type="text_delta", turn_id=turn_id, payload={"text": final_content})
@@ -621,8 +648,9 @@ class Agent:
             except Exception:
                 pass
 
+        usage_summary = self._finalize_turn_usage(ctx)
         yield AgentEvent(
             event_type="turn_finished",
             turn_id=turn_id,
-            payload={"content": final_content, "session_id": session_id},
+            payload={"content": final_content, "session_id": session_id, "usage": usage_summary},
         )

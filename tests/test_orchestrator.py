@@ -107,3 +107,51 @@ def test_orchestrator_auto_routing_and_fallback(tmp_path):
 
     with pytest.raises(ValueError):
         orch.set_mode("invalid-mode")
+
+
+def test_token_usage_extraction_and_cli_formatting(tmp_path):
+    from codag.cli import _format_token_usage
+    from codag.core.agent import Agent
+    from codag.llm import LLMClient, extract_token_usage
+
+    # 1. Gemini usage with explicit thoughts_token_count
+    mock_genai = MagicMock()
+    mock_resp = SimpleNamespace(
+        candidates=[SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text="Done", function_call=None)]))],
+        text="Done",
+        usage_metadata=SimpleNamespace(prompt_token_count=200, candidates_token_count=50, thoughts_token_count=75),
+    )
+    mock_genai.models.generate_content.return_value = mock_resp
+    gem = GeminiClient(GeminiConfig(enabled=True, model="gemini-2.5-flash"), api_key="k", client=mock_genai)
+    gem_resp = gem.chat("gemini-2.5-flash", [{"role": "user", "content": "hi"}], MainModelConfig())
+    gem_usage = extract_token_usage(gem_resp)
+    assert gem_usage["input_tokens"] == 200
+    assert gem_usage["output_tokens"] == 50
+    assert gem_usage["thinking_tokens"] == 75
+    assert gem_usage["total_tokens"] == 325
+
+    # 2. Ollama response with thinking text splits eval_count into thinking + output
+    ollama_resp = SimpleNamespace(
+        message=SimpleNamespace(content="Final answer", thinking="Step 1: analyze the question carefully."),
+        prompt_eval_count=100,
+        eval_count=40,
+        model="qwen3.5:9b",
+    )
+    ol_usage = extract_token_usage(ollama_resp)
+    assert ol_usage["input_tokens"] == 100
+    assert ol_usage["thinking_tokens"] > 0
+    assert ol_usage["output_tokens"] + ol_usage["thinking_tokens"] == 40
+
+    # 3. Agent turn accumulates usage and _format_token_usage formats cleanly
+    cfg = CodagConfig()
+    cfg.paths.data_dir = str(tmp_path / "data")
+    mock_ol = MagicMock()
+    mock_ol.chat.return_value = ollama_resp
+    agent = Agent(cfg, llm=LLMClient(cfg.ollama, client=mock_ol))
+    list(agent.run_turn("Hello"))
+    assert agent.last_turn_usage["input_tokens"] == 100
+    assert agent.last_turn_usage["total_tokens"] == 140
+    formatted = _format_token_usage(agent.last_turn_usage)
+    assert "input 100" in formatted
+    assert f"output {agent.last_turn_usage['output_tokens']}" in formatted
+    assert f"thinking {agent.last_turn_usage['thinking_tokens']}" in formatted
