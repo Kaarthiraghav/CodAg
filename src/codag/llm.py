@@ -21,6 +21,7 @@ class _NormalizedFunction:
 @dataclass
 class _NormalizedToolCall:
     function: _NormalizedFunction
+    thought_signature: bytes | str | None = None
 
     def model_dump(self) -> dict[str, Any]:
         return {"function": {"name": self.function.name, "arguments": self.function.arguments}}
@@ -111,13 +112,24 @@ class LLMClient:
         format_schema: dict[str, Any] | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
+        sanitized_messages: list[dict[str, Any]] = []
+        for m in messages:
+            if isinstance(m, dict) and m.get("tool_calls"):
+                clean_tcs = [
+                    {"function": tc["function"]} if isinstance(tc, dict) and "function" in tc else tc
+                    for tc in m["tool_calls"]
+                ]
+                sanitized_messages.append({**m, "tool_calls": clean_tcs})
+            else:
+                sanitized_messages.append(m)
+
         options: dict[str, Any] = {
             "temperature": settings.temperature,
             "num_ctx": settings.num_ctx,
         }
         call_kwargs: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": sanitized_messages,
             "options": options,
             "keep_alive": self.keep_alive,
             "stream": stream,
@@ -253,10 +265,12 @@ class GeminiClient:
     @staticmethod
     def _convert_messages(
         messages: list[dict[str, Any]],
-    ) -> tuple[str | None, list[dict[str, Any]]]:
-        """Convert OpenAI/Ollama-style chat messages to Gemini system_instruction + contents."""
+    ) -> tuple[str | None, list[Any]]:
+        """Convert OpenAI/Ollama-style chat messages to Gemini system_instruction + Content list."""
+        from google.genai import types
+
         system_parts: list[str] = []
-        contents: list[dict[str, Any]] = []
+        contents: list[Any] = []
 
         for msg in messages:
             role = msg.get("role", "user")
@@ -265,23 +279,44 @@ class GeminiClient:
                 if text:
                     system_parts.append(text)
             elif role == "assistant":
-                parts: list[dict[str, Any]] = []
+                parts: list[Any] = []
                 if text:
-                    parts.append({"text": text})
+                    parts.append(types.Part(text=text))
                 for tc in msg.get("tool_calls") or []:
                     fn = tc.get("function", {}) if isinstance(tc, dict) else {}
                     if fn.get("name"):
-                        parts.append({"function_call": {"name": fn["name"], "args": fn.get("arguments") or {}}})
+                        sig = tc.get("thought_signature")
+                        part_kwargs: dict[str, Any] = {
+                            "function_call": types.FunctionCall(
+                                name=fn["name"],
+                                args=fn.get("arguments") or {},
+                            )
+                        }
+                        if sig is not None:
+                            part_kwargs["thought_signature"] = sig
+                        else:
+                            # Sentinel accepted by Gemini API if prior tool call originated from non-Gemini model
+                            part_kwargs["thought_signature"] = b"skip_thought_signature_validator"
+                        parts.append(types.Part(**part_kwargs))
                 if parts:
-                    contents.append({"role": "model", "parts": parts})
+                    contents.append(types.Content(role="model", parts=parts))
             elif role == "tool":
                 fn_name = msg.get("name") or "tool"
-                contents.append({
-                    "role": "user",
-                    "parts": [{"function_response": {"name": fn_name, "response": {"result": text}}}],
-                })
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(
+                                function_response=types.FunctionResponse(
+                                    name=fn_name,
+                                    response={"result": text},
+                                )
+                            )
+                        ],
+                    )
+                )
             else:
-                contents.append({"role": "user", "parts": [{"text": text}]})
+                contents.append(types.Content(role="user", parts=[types.Part(text=text)]))
 
         system_instruction = "\n\n".join(system_parts) if system_parts else None
         return system_instruction, contents
@@ -376,12 +411,17 @@ class GeminiClient:
                             args = dict(args)
                         except Exception:
                             args = {}
+                    raw_sig = getattr(part, "thought_signature", None)
+                    sig = raw_sig if isinstance(raw_sig, (bytes, str)) else None
                     parsed_calls.append(
-                        _NormalizedToolCall(function=_NormalizedFunction(name=fc.name, arguments=args))
+                        _NormalizedToolCall(
+                            function=_NormalizedFunction(name=fc.name, arguments=args),
+                            thought_signature=sig,
+                        )
                     )
 
         content = "".join(text_parts)
-        if not content and getattr(raw_resp, "text", None) and not parsed_calls:
+        if not content and not parsed_calls and getattr(raw_resp, "text", None):
             content = raw_resp.text
 
         usage = getattr(raw_resp, "usage_metadata", None)

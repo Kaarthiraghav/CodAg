@@ -166,8 +166,12 @@ class Agent:
         profile_block = self.profile_engine.format_profile_for_prompt()
 
         from datetime import datetime
+        from pathlib import Path
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M %Z").strip()
-        system_content = f"{SYSTEM_PROMPT}\n\nCurrent Local Date & Time: {now_str}"
+        system_content = (
+            f"{SYSTEM_PROMPT}\n\nCurrent Local Date & Time: {now_str}"
+            f"\nUser Home Directory: {Path.home()}"
+        )
         if session and session.project_path:
             system_content += f"\n\nActive Project Workspace: {session.project_path}\nAll relative file operations, builds, and code plans should target this project path.\n"
         if profile_block:
@@ -215,7 +219,12 @@ class Agent:
                         "function": {
                             "name": tc.function.name,
                             "arguments": tc.function.arguments,
-                        }
+                        },
+                        **(
+                            {"thought_signature": tc.thought_signature}
+                            if isinstance(getattr(tc, "thought_signature", None), (bytes, str))
+                            else {}
+                        ),
                     }
                     for tc in raw_tool_calls
                 ],
@@ -417,8 +426,12 @@ class Agent:
         memory_block = format_memory_context(relevant_facts)
 
         from datetime import datetime
+        from pathlib import Path
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M %Z").strip()
-        system_content = f"{SYSTEM_PROMPT}\n\nCurrent Local Date & Time: {now_str}"
+        system_content = (
+            f"{SYSTEM_PROMPT}\n\nCurrent Local Date & Time: {now_str}"
+            f"\nUser Home Directory: {Path.home()}"
+        )
         if session and session.project_path:
             system_content += f"\n\nActive Project Workspace: {session.project_path}\nAll relative file operations, builds, and code plans should target this project path.\n"
         if speakable:
@@ -464,7 +477,12 @@ class Agent:
                         "function": {
                             "name": tc.function.name,
                             "arguments": tc.function.arguments,
-                        }
+                        },
+                        **(
+                            {"thought_signature": tc.thought_signature}
+                            if isinstance(getattr(tc, "thought_signature", None), (bytes, str))
+                            else {}
+                        ),
                     }
                     for tc in raw_tool_calls
                 ],

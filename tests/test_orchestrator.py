@@ -155,3 +155,41 @@ def test_token_usage_extraction_and_cli_formatting(tmp_path):
     assert "input 100" in formatted
     assert f"output {agent.last_turn_usage['output_tokens']}" in formatted
     assert f"thinking {agent.last_turn_usage['thinking_tokens']}" in formatted
+
+
+def test_gemini_preserves_thought_signature_in_converted_messages():
+    mock_genai = MagicMock()
+    sig_bytes = b"sig-xyz-123"
+    part1 = SimpleNamespace(
+        text="",
+        function_call=SimpleNamespace(name="code.plan_project", args={"description": "Build SpendWise"}),
+        thought_signature=sig_bytes,
+    )
+    resp1 = SimpleNamespace(
+        candidates=[SimpleNamespace(content=SimpleNamespace(parts=[part1]))],
+        usage_metadata=SimpleNamespace(prompt_token_count=10, candidates_token_count=5, thoughts_token_count=3),
+    )
+    mock_genai.models.generate_content.return_value = resp1
+
+    gem = GeminiClient(GeminiConfig(enabled=True, model="gemini-3.5-flash"), api_key="k", client=mock_genai)
+    res = gem.chat("gemini-3.5-flash", [{"role": "user", "content": "Build"}], MainModelConfig())
+    assert res.message.tool_calls is not None
+    assert res.message.tool_calls[0].thought_signature == sig_bytes
+
+    _, contents = GeminiClient._convert_messages([
+        {"role": "user", "content": "Build"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "function": {"name": "code.plan_project", "arguments": {"description": "Build SpendWise"}},
+                    "thought_signature": sig_bytes,
+                }
+            ],
+        },
+        {"role": "tool", "name": "code.plan_project", "content": "Plan ready"},
+    ])
+    model_parts = contents[1].parts
+    assert model_parts[0].function_call.name == "code.plan_project"
+    assert model_parts[0].thought_signature == sig_bytes

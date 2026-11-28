@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from pydantic import BaseModel, Field
 
+from codag.config import MainModelConfig
 from codag.llm import LLMClient
 
 
@@ -293,35 +294,44 @@ def plan_project(
     model: str = "qwen2.5-coder:7b",
 ) -> ProjectPlan:
     """Generate project plan using coder model or robust generator."""
-    # If description mentions todo app or default, provide the todo plan
+    # Fast deterministic plan when specifically requesting the default CLI todo app
     desc_lower = description.lower()
-    if "todo" in desc_lower or "cli" in desc_lower or "app" in desc_lower:
+    if "todo" in desc_lower:
         return generate_default_todo_plan(target_dir)
 
     # General project template if no LLM
     if not llm:
         return generate_default_todo_plan(target_dir)
 
-    # Attempt to prompt LLM
+    # Attempt to prompt LLM (with structured schema and valid MainModelConfig)
     try:
         prompt = (
-            f"You are a software architect. Plan the following project with a test-first approach:\n"
+            f"You are a senior software architect. Plan the following project with a test-first approach:\n"
             f"Request: {description}\n"
-            f"Target directory: {target_dir}\n"
-            "Return a JSON object with: name, description, target_dir, tech_stack, and a list of tasks. "
-            "Each task must have: id, title, description, test_file, code_file, test_code, code_content, commit_message."
+            f"Target directory: {target_dir}\n\n"
+            "Requirements:\n"
+            "- Decompose into 3 to 6 sequential, self-contained tasks.\n"
+            "- Every task MUST provide valid, complete, runnable `test_code` (using pytest) and `code_content`.\n"
+            "- Use clean relative paths for `test_file` (e.g. `tests/test_db.py`) and `code_file` (e.g. `app/db.py`).\n"
+            "- Tests must pass when run with `pytest` inside the target directory.\n"
+            "Return JSON matching the ProjectPlan schema."
         )
-        resp = llm.chat(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            settings=None,  # type: ignore
-        )
+        chat_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "settings": MainModelConfig(temperature=0.2, num_ctx=8192),
+            "format_schema": ProjectPlan.model_json_schema(),
+        }
+        if hasattr(llm, "select_backend"):
+            chat_kwargs["skill_name"] = "code"
+        resp = llm.chat(**chat_kwargs)
         content = resp.message.content or ""
-        # Try parsing JSON from response
         if "{" in content and "}" in content:
             start = content.find("{")
             end = content.rfind("}") + 1
             data = json.loads(content[start:end])
+            # Always honor the requested target_dir
+            data["target_dir"] = target_dir
             return ProjectPlan.model_validate(data)
     except Exception:
         pass

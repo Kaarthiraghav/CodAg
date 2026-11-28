@@ -6,6 +6,7 @@ import subprocess
 import sys
 from typing import Any
 
+from codag.config import MainModelConfig
 from codag.core.types import Decision, RiskTier, ToolCall
 from codag.llm import LLMClient
 from codag.safety.audit import AuditLogger
@@ -135,11 +136,14 @@ def execute_build(
                     "Fix the implementation to make the test pass. Return ONLY python code without markdown."
                 )
                 try:
-                    fix_resp = llm.chat(
-                        model=model,
-                        messages=[{"role": "user", "content": fix_prompt}],
-                        settings=None,  # type: ignore
-                    )
+                    fix_kwargs: dict[str, Any] = {
+                        "model": model,
+                        "messages": [{"role": "user", "content": fix_prompt}],
+                        "settings": MainModelConfig(temperature=0.1, num_ctx=8192),
+                    }
+                    if hasattr(llm, "select_backend"):
+                        fix_kwargs["skill_name"] = "code"
+                    fix_resp = llm.chat(**fix_kwargs)
                     fixed_code = fix_resp.message.content or ""
                     if fixed_code.strip():
                         if fixed_code.startswith("```"):

@@ -134,3 +134,45 @@ def test_execute_build_end_to_end(tmp_path: Path):
     )
     assert test_run.returncode == 0
     assert "passed" in test_run.stdout
+
+
+def test_code_planner_uses_llm_for_non_todo_projects(tmp_path: Path):
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    mock_llm = MagicMock()
+    custom_plan_json = json.dumps({
+        "name": "SpendWise",
+        "description": "Full-stack expense tracker",
+        "target_dir": "/ignored",
+        "tech_stack": "Python 3.12 + SQLite",
+        "tasks": [
+            {
+                "id": 1,
+                "title": "Database layer",
+                "description": "SQLite storage",
+                "test_file": "tests/test_db.py",
+                "code_file": "spendwise/db.py",
+                "test_code": "def test_ok(): assert True",
+                "code_content": "def init(): pass",
+                "commit_message": "feat(db): init sqlite schema",
+            }
+        ],
+    })
+    mock_llm.chat.return_value = SimpleNamespace(
+        message=SimpleNamespace(content=custom_plan_json, tool_calls=None)
+    )
+
+    plan = plan_project(
+        description="Build SpendWise full-stack expense web app",
+        target_dir=str(tmp_path / "SpendWise"),
+        llm=mock_llm,
+        model="qwen3.5:9b",
+    )
+    assert plan.name == "SpendWise"
+    assert plan.target_dir == str(tmp_path / "SpendWise")
+    assert len(plan.tasks) == 1
+    assert mock_llm.chat.called
+    call_kwargs = mock_llm.chat.call_args.kwargs
+    assert call_kwargs["settings"] is not None
