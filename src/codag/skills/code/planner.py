@@ -324,7 +324,7 @@ def plan_project(
             "format_schema": ProjectPlan.model_json_schema(),
         }
         if hasattr(llm, "select_backend"):
-            chat_kwargs["skill_name"] = "code"
+            chat_kwargs["skill_name"] = "code_plan"
         resp = llm.chat(**chat_kwargs)
         content = resp.message.content or ""
         if "{" in content and "}" in content:

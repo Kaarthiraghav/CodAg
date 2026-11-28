@@ -104,7 +104,11 @@ def doctor(config_dir: str = "config") -> None:
         table.add_row("Gemini API", "[yellow]NO KEY[/yellow]", f"Set {cfg.gemini.api_key_env} to enable cloud orchestration")
     else:
         table.add_row("Gemini API", "[dim]DISABLED[/dim]", "Local-only mode")
-    table.add_row("Orchestrator Mode", "[cyan]ACTIVE[/cyan]", f"mode={cfg.orchestrator.mode} (complex: {', '.join(cfg.orchestrator.complex_skills)})")
+    table.add_row(
+        "Orchestrator Mode",
+        "[cyan]ACTIVE[/cyan]",
+        f"mode={cfg.orchestrator.mode} (Gemini: {', '.join(cfg.orchestrator.planning_skills)} + light | Qwen: tools & heavy)",
+    )
 
     console.print(table)
     if not all_passed:
@@ -287,9 +291,9 @@ def chat(
                     gem_status = "[green]available[/green]" if st["gemini_available"] else f"[yellow]unavailable (set {agent.config.gemini.api_key_env})[/yellow]"
                     console.print(
                         f"Orchestrator Mode: [bold cyan]{st['mode']}[/bold cyan]\n"
-                        f"  Local Model:  {st['local_model']}\n"
-                        f"  Gemini Model: {st['gemini_model']} ({gem_status})\n"
-                        f"  Complex Skills -> Gemini: {', '.join(st['complex_skills'])}"
+                        f"  Gemini (Light & Planning): {st['gemini_model']} ({gem_status})\n"
+                        f"  Qwen (Heavy & Tools):      {st['local_model']}\n"
+                        f"  Planning -> Gemini: {', '.join(st['planning_skills'])} | Heavy -> Qwen: {', '.join(st['heavy_skills'])}"
                     )
                 continue
 

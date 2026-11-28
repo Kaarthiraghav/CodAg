@@ -58,7 +58,7 @@ def test_gemini_client_chat_and_tool_calls(tmp_path):
 def test_orchestrator_auto_routing_and_fallback(tmp_path):
     cfg = CodagConfig()
     cfg.orchestrator.mode = "auto"
-    cfg.orchestrator.context_overflow_chars = 100
+    cfg.orchestrator.light_max_chars = 100
 
     mock_ollama = MagicMock()
     mock_ollama.chat.return_value = SimpleNamespace(message=SimpleNamespace(content="local reply", tool_calls=None))
@@ -70,26 +70,44 @@ def test_orchestrator_auto_routing_and_fallback(tmp_path):
     logger = EventLogger(tmp_path / "events.jsonl")
     orch = ModelOrchestrator(cfg, ollama_client=mock_ollama, gemini_client=mock_gemini, logger=logger)
 
-    # 1. Simple chat -> local Ollama
+    # 1. Light foreground chat -> Gemini
     provider, _ = orch.select_backend(messages=[{"role": "user", "content": "Hi"}])
-    assert provider == "ollama"
+    assert provider == "gemini"
 
-    # 2. Complex skill (web/code) -> Gemini
+    # 2. Planning / routing -> Gemini
+    provider, _ = orch.select_backend(
+        messages=[{"role": "user", "content": "x" * 200}],
+        skill_name="code_plan",
+    )
+    assert provider == "gemini"
+    provider, _ = orch.select_backend(
+        messages=[{"role": "user", "content": "route this"}],
+        skill_name="router",
+        format_schema={"type": "object"},
+    )
+    assert provider == "gemini"
+
+    # 3. Heavy lifting (tool calls, large context, code_exec) -> local Ollama Qwen
     provider, _ = orch.select_backend(
         messages=[{"role": "user", "content": "Research chess"}],
         tools=[{"type": "function", "function": {"name": "web.research_and_verify"}}],
     )
-    assert provider == "gemini"
+    assert provider == "ollama"
 
-    # 3. Large context -> Gemini
     provider, _ = orch.select_backend(messages=[{"role": "user", "content": "x" * 150}])
-    assert provider == "gemini"
+    assert provider == "ollama"
 
-    # 4. Explicit local mode overrides complex skill
+    provider, _ = orch.select_backend(
+        messages=[{"role": "user", "content": "Fix failing test"}],
+        skill_name="code_exec",
+    )
+    assert provider == "ollama"
+
+    # 4. Explicit local mode overrides planning/light
     orch.set_mode("local")
     provider, _ = orch.select_backend(
-        messages=[{"role": "user", "content": "x" * 150}],
-        skill_name="code",
+        messages=[{"role": "user", "content": "Hi"}],
+        skill_name="code_plan",
     )
     assert provider == "ollama"
 

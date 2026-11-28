@@ -167,12 +167,15 @@ Respond in JSON only with schema: {{"skill": "files"|"shell"|"tasks"|"notes"|"no
                 },
                 "required": ["skill", "confidence"],
             }
-            res = self.llm.chat(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                settings=settings or MainModelConfig(temperature=0.0, num_ctx=2048),
-                format_schema=schema,
-            )
+            chat_kwargs: dict[str, Any] = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "settings": settings or MainModelConfig(temperature=0.0, num_ctx=2048),
+                "format_schema": schema,
+            }
+            if hasattr(self.llm, "select_backend"):
+                chat_kwargs["skill_name"] = "router"
+            res = self.llm.chat(**chat_kwargs)
             import json
             data = json.loads(res.message.content)
             selected = data.get("skill", "none")

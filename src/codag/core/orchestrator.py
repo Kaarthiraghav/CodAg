@@ -47,7 +47,9 @@ class ModelOrchestrator:
             "local_model": self.config.models.main,
             "gemini_model": self.config.gemini.model,
             "gemini_available": self.gemini.is_available,
-            "complex_skills": self.config.orchestrator.complex_skills,
+            "planning_skills": self.config.orchestrator.planning_skills,
+            "heavy_skills": self.config.orchestrator.heavy_skills,
+            "light_max_chars": self.config.orchestrator.light_max_chars,
         }
 
     def select_backend(
@@ -58,7 +60,7 @@ class ModelOrchestrator:
         format_schema: dict[str, Any] | None = None,
         requested_model: str | None = None,
     ) -> tuple[str, str]:
-        """Choose ('ollama'|'gemini', model_name) for the current call."""
+        """Choose ('ollama'|'gemini', model_name): Gemini for planning/light, Qwen for heavy lifting."""
         local_model = requested_model or self.config.models.main
         gemini_model = self.config.gemini.model
 
@@ -68,27 +70,30 @@ class ModelOrchestrator:
         if self.mode == "gemini":
             return "gemini", gemini_model
 
-        # Auto mode:
-        # 1. If a complex skill is active (code, web, custom_skills), use Gemini
-        if skill_name and skill_name in self.config.orchestrator.complex_skills:
+        # Auto mode: Gemini = Light work & Planning; Local Qwen = Heavy lifting & Tool execution
+        # 1. Explicit planning / light routing roles -> Gemini
+        if skill_name and skill_name in self.config.orchestrator.planning_skills:
             return "gemini", gemini_model
 
-        # 2. If tool definitions are attached for a complex tool-calling turn, check skill prefix
+        # 2. Explicit heavy skills -> Local Qwen
+        if skill_name and skill_name in self.config.orchestrator.heavy_skills:
+            return "ollama", local_model
+
+        # 3. Tool-calling execution loops -> Local Qwen
         if tools:
-            tool_skills = {
-                t.get("function", {}).get("name", "").split(".")[0]
-                for t in tools
-            }
-            if tool_skills & set(self.config.orchestrator.complex_skills):
-                return "gemini", gemini_model
+            return "ollama", local_model
 
-        # 3. Context overflow guard: escalate large prompts to Gemini's large context
+        # 4. Large / heavy context payloads -> Local Qwen
         total_chars = sum(len(str(m.get("content", ""))) for m in messages)
-        if total_chars > self.config.orchestrator.context_overflow_chars:
-            return "gemini", gemini_model
+        if total_chars > self.config.orchestrator.light_max_chars:
+            return "ollama", local_model
 
-        # 4. Default to fast, private local Ollama for simple chat, router, memory, and local tasks
-        return "ollama", local_model
+        # 5. Background structured extraction (memory/profile) -> Local Qwen to conserve API quota
+        if format_schema is not None:
+            return "ollama", local_model
+
+        # 6. Light foreground work (concise Q&A, planning discussion) -> Gemini
+        return "gemini", gemini_model
 
     def chat(
         self,

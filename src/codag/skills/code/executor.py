@@ -142,7 +142,7 @@ def execute_build(
                         "settings": MainModelConfig(temperature=0.1, num_ctx=8192),
                     }
                     if hasattr(llm, "select_backend"):
-                        fix_kwargs["skill_name"] = "code"
+                        fix_kwargs["skill_name"] = "code_exec"
                     fix_resp = llm.chat(**fix_kwargs)
                     fixed_code = fix_resp.message.content or ""
                     if fixed_code.strip():

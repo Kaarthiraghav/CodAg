@@ -14,9 +14,10 @@ fallback_models = ["gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.1-flas
 api_key_env     = "GEMINI_API_KEY"
 
 [orchestrator]
-mode                    = "auto"
-complex_skills          = ["code", "web", "custom_skills"]
-context_overflow_chars  = 18000
+mode                     = "auto"
+planning_skills          = ["code_plan", "router"]
+heavy_skills             = ["code_exec", "code", "files", "shell", "web", "custom_skills", "knowledge"]
+light_max_chars          = 10000
 prefer_local_for_private = true
 
 [main]

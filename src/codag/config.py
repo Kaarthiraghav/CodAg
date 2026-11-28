@@ -27,8 +27,11 @@ class GeminiConfig(BaseModel):
 
 class OrchestratorConfig(BaseModel):
     mode: str = "auto"  # "auto" | "local" | "gemini"
-    complex_skills: list[str] = Field(default_factory=lambda: ["code", "web", "custom_skills"])
-    context_overflow_chars: int = 18000
+    planning_skills: list[str] = Field(default_factory=lambda: ["code_plan", "router"])
+    heavy_skills: list[str] = Field(
+        default_factory=lambda: ["code_exec", "code", "files", "shell", "web", "custom_skills", "knowledge"]
+    )
+    light_max_chars: int = 10000
     prefer_local_for_private: bool = True
 
 
