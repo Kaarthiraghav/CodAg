@@ -312,6 +312,7 @@ def plan_project(
             "Requirements:\n"
             "- Decompose into 3 to 6 sequential, self-contained tasks.\n"
             "- Every task MUST provide valid, complete, runnable `test_code` (using pytest) and `code_content`.\n"
+            "- Unless the request explicitly asks for a third-party package, use ONLY Python 3.12 standard library (e.g. sqlite3, http.server, json, csv, pathlib) + pytest. Do NOT import fastapi, flask, django, or sqlalchemy.\n"
             "- Use clean relative paths for `test_file` (e.g. `tests/test_db.py`) and `code_file` (e.g. `app/db.py`).\n"
             "- Tests must pass when run with `pytest` inside the target directory.\n"
             "Return JSON matching the ProjectPlan schema."

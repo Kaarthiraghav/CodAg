@@ -385,8 +385,8 @@ class GeminiClient:
             except Exception as exc:
                 last_exc = exc
                 err_msg = str(exc)
-                # Retry next Gemini model only on model availability / temporary capacity errors
-                if any(tok in err_msg for tok in ("404", "503", "NOT_FOUND", "UNAVAILABLE")):
+                # Retry next Gemini model on availability, capacity, or per-model quota exhaustion
+                if any(tok in err_msg for tok in ("404", "429", "503", "NOT_FOUND", "RESOURCE_EXHAUSTED", "UNAVAILABLE")):
                     continue
                 raise
         if raw_resp is None and last_exc is not None:

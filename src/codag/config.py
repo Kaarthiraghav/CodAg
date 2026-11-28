@@ -19,7 +19,9 @@ class OllamaConfig(BaseModel):
 class GeminiConfig(BaseModel):
     enabled: bool = True
     model: str = "gemini-3.5-flash"
-    fallback_models: list[str] = Field(default_factory=lambda: ["gemini-3.5-flash-lite", "gemini-3.8-flash"])
+    fallback_models: list[str] = Field(
+        default_factory=lambda: ["gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"]
+    )
     api_key_env: str = "GEMINI_API_KEY"
 
 
